@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rtk cargo:*)",
+      "Bash(rustup show:*)",
+      "Bash(cmd.exe //c \"where link.exe\")",
+      "Bash(cargo clean:*)",
+      "Bash(scoop install:*)"
+    ]
+  }
+}
