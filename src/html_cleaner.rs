@@ -12,7 +12,7 @@ const REMOVE_TAGS: &[&str] = &[
 /// CSS classes/ids that indicate noise
 static NOISE_PATTERNS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)(ad[-_]?|sidebar|cookie|consent|popup|modal|newsletter|social|share|comment|related|promo|banner|sponsor|disclaimer|footer|nav|menu|breadcrumb)"
+        r"(?i)(\bad[\w-]*|sidebar|cookie|consent|popup|modal|newsletter|social|share|comment|related|promo|banner|sponsor|disclaimer|footer|nav|menu|breadcrumb)"
     ).unwrap()
 });
 
@@ -110,6 +110,7 @@ fn collect_text_from_element(
     element: scraper::ElementRef,
     skip_ids: &std::collections::HashSet<NodeId>,
 ) -> Vec<String> {
+    let container_id = element.id();
     let mut texts = Vec::new();
 
     for descendant in element.traverse() {
@@ -121,11 +122,15 @@ fn collect_text_from_element(
                     }
                 }
                 if let Some(text) = node_ref.value().as_text() {
-                    // Check if any ancestor is in skip_ids
+                    // Walk up ancestors but stop at the container to avoid
+                    // false positives from noise elements above (e.g. html, body).
                     let mut should_skip = false;
                     let mut current = node_ref.parent();
                     while let Some(parent) = current {
                         if let Some(parent_el) = scraper::ElementRef::wrap(parent) {
+                            if parent_el.id() == container_id {
+                                break; // reached container — stop, don't go higher
+                            }
                             if skip_ids.contains(&parent_el.id()) {
                                 should_skip = true;
                                 break;

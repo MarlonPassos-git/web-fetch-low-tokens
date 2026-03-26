@@ -37,7 +37,7 @@ anyhow = "1"
 ego-tree = "0.10"
 
 [dev-dependencies]
-axum-test = "16"
+axum-test = "19"
 wiremock = "0.6"
 tempfile = "3"
 tokio-test = "0.4"
