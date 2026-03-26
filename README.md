@@ -1,154 +1,231 @@
-# Token Enhancer
+# Fetchless
 
-A local proxy that strips web pages down to clean text before they enter your AI agent's context window.
+Proxy web que converte páginas HTML/JSON em texto limpo antes de entrar no contexto de um agente de IA. Redução típica de **86–99% de tokens**.
 
-**One fetch of Yahoo Finance: 704,760 tokens → 2,625 tokens. 99.6% reduction.**
+No API key. No LLM. No GPU. Single binary.
 
-No API key. No LLM. No GPU. Just Python.
+| Fonte | Tokens brutos | Após proxy | Redução |
+|-------|--------------|------------|---------|
+| Yahoo Finance (AAPL) | 704.760 | 2.625 | **99,6%** |
+| Wikipedia (artigo) | 154.440 | 19.479 | **87,4%** |
+| Hacker News | 8.662 | 859 | **90,1%** |
 
-## The Problem
+---
 
-AI agents waste most of their token budget loading raw HTML pages into context. A single Yahoo Finance page is 704K tokens of navigation bars, ads, scripts, and junk. Your agent pays for all of it before any reasoning happens.
+## Instalação
 
-## The Solution
+Requer [Rust](https://rustup.rs/) 1.75+.
 
-Token Enhancer sits between your agent and the web. It fetches the page, strips the noise, caches the result, and returns only clean data.
+```bash
+git clone <repo>
+cd web-fetch-low-tokens
 
-| Source | Raw Tokens | After Proxy | Reduction |
-|--------|-----------|-------------|-----------|
-| Yahoo Finance (AAPL) | 704,760 | 2,625 | **99.6%** |
-| Wikipedia article | 154,440 | 19,479 | **87.4%** |
-| Hacker News | 8,662 | 859 | **90.1%** |
-
-## Quick Start
-```
-git clone https://github.com/Boof-Pack/token-enhancer.git
-cd token-enhancer
-chmod +x install.sh
-./install.sh
-source .venv/bin/activate
-python3 test_all.py --live
+# Build otimizado
+cargo build --release
 ```
 
-## Usage
+O binário fica em `target/release/fetchless`.
 
-### As a standalone proxy
-```
-source .venv/bin/activate
-python3 proxy.py
-```
+---
 
-Then in another terminal:
-```
-curl -s http://localhost:8080/fetch \
-  -H "content-type: application/json" \
-  -d '{"url": "https://finance.yahoo.com/quote/AAPL/"}' \
-  | python3 -m json.tool
+## Modos de uso
+
+O fetchless tem dois modos: **servidor HTTP REST** e **servidor MCP** (integração com agentes via stdio).
+
+### Modo HTTP (padrão)
+
+```bash
+./target/release/fetchless --port 8080
 ```
 
-### As an MCP Server (Claude Desktop, Cursor, OpenClaw)
+| Flag | Padrão | Descrição |
+|------|--------|-----------|
+| `--port` | `8080` | Porta HTTP |
+| `--bind` | `127.0.0.1` | Endereço de bind |
+| `--db-path` | `agent_proxy.db` | Caminho do banco SQLite |
+| `--default-ttl` | `300` | TTL padrão do cache (segundos) |
+| `--mcp` | — | Ativa modo MCP |
 
-This is the plug and play option. Your AI agent discovers the tools automatically and uses them on its own.
+### Modo MCP
 
-Install the MCP dependency:
+Para usar como ferramenta MCP num agente de IA (ex: Claude Desktop):
+
+```bash
+./target/release/fetchless --mcp
 ```
-source .venv/bin/activate
-pip install mcp
+
+Ferramentas expostas: `fetch_clean`, `fetch_clean_batch`, `refine_prompt`.
+
+---
+
+## Endpoints REST
+
+### `POST /fetch` — Buscar e limpar uma URL
+
+```bash
+curl -X POST http://localhost:8080/fetch \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://en.wikipedia.org/wiki/Rust_(programming_language)"}'
 ```
 
-**Claude Desktop:** Add to your config file
+**Com TTL customizado:**
+```bash
+curl -X POST http://localhost:8080/fetch \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://docs.rs/tokio/latest/tokio/", "ttl": 600}'
+```
 
-Mac: `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+**Resposta:**
 ```json
 {
-  "mcpServers": {
-    "token-enhancer": {
-      "command": "python3",
-      "args": ["/FULL/PATH/TO/token-enhancer/mcp_server.py"]
-    }
-  }
+  "url": "https://en.wikipedia.org/wiki/Rust_(programming_language)",
+  "content": "Rust is a multi-paradigm, general-purpose programming language...",
+  "content_type": "html",
+  "original_tokens": 12500,
+  "cleaned_tokens": 980,
+  "reduction_pct": 92.1,
+  "from_cache": false
 }
 ```
 
-Replace `/FULL/PATH/TO/` with the actual path to your clone.
+### `POST /fetch/batch` — Múltiplas URLs
 
-**Cursor:** Add to `.cursor/mcp.json` in your project:
+```bash
+curl -X POST http://localhost:8080/fetch/batch \
+  -H "Content-Type: application/json" \
+  -d '{
+    "urls": [
+      "https://doc.rust-lang.org/book/ch01-00-getting-started.html",
+      "https://doc.rust-lang.org/book/ch02-00-guessing-game-tutorial.html"
+    ],
+    "ttl": 300
+  }'
+```
+
+**Resposta:**
 ```json
 {
-  "mcpServers": {
-    "token-enhancer": {
-      "command": "python3",
-      "args": ["/FULL/PATH/TO/token-enhancer/mcp_server.py"]
-    }
-  }
+  "results": [
+    { "url": "...", "content": "...", "original_tokens": 8000, "cleaned_tokens": 650, "from_cache": false },
+    { "url": "...", "content": "...", "original_tokens": 9200, "cleaned_tokens": 720, "from_cache": false }
+  ],
+  "total_original_tokens": 17200,
+  "total_cleaned_tokens": 1370,
+  "total_reduction_pct": 92.0
 }
 ```
 
-Once connected, your agent gets three tools:
+> Limite de 10 URLs por requisição.
 
-`fetch_clean` fetches any URL and returns clean text (86 to 99% smaller)
+### `POST /refine` — Refinar prompt (opcional)
 
-`fetch_clean_batch` fetches multiple URLs at once
+Remove palavras de preenchimento preservando entidades importantes (tickers, valores monetários, negações, referências temporais).
 
-`refine_prompt` optional prompt cleanup, shows both versions so you decide
+```bash
+curl -X POST http://localhost:8080/refine \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Basically, I just wanted to kind of ask you about maybe potentially using Rust for our new project, if that would be okay."}'
+```
 
-### As a LangChain Tool
+**Resposta:**
+```json
+{
+  "original": "Basically, I just wanted to kind of ask you about maybe potentially using Rust...",
+  "suggested": "I wanted to ask about using Rust for our new project.",
+  "original_tokens": 32,
+  "suggested_tokens": 11,
+  "savings_pct": 65.6,
+  "confidence": 0.92,
+  "protected_entities": []
+}
+```
+
+> `suggested` é uma sugestão — você decide se usa o texto original ou o refinado.
+
+### `GET /stats` — Estatísticas
+
+```bash
+curl http://localhost:8080/stats
+```
+
+```json
+{
+  "layer1_requests": 15,
+  "layer1_tokens_saved": 340,
+  "layer2_requests": 42,
+  "layer2_tokens_saved": 98450,
+  "total_tokens_saved": 98790,
+  "est_cost_saved": 0.148
+}
+```
+
+---
+
+## Cache
+
+O fetchless usa SQLite para cachear respostas. A segunda requisição para a mesma URL dentro do TTL retorna `"from_cache": true` instantaneamente.
+
+```bash
+# Desabilitar cache numa requisição específica
+curl -X POST http://localhost:8080/fetch \
+  -d '{"url": "https://example.com/news", "ttl": 0}'
+
+# Usar caminho customizado para o banco
+./target/release/fetchless --db-path /tmp/meu-cache.db
+```
+
+---
+
+## Exemplos práticos
+
+### Python
+
 ```python
-from langchain.tools import tool
 import requests
 
-@tool
+resp = requests.post("http://localhost:8080/fetch", json={
+    "url": "https://docs.python.org/3/library/asyncio.html"
+})
+data = resp.json()
+print(f"Redução: {data['reduction_pct']}%")
+print(data['content'][:500])
+```
+
+### Node.js
+
+```js
+const res = await fetch("http://localhost:8080/fetch", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ url: "https://nodejs.org/en/docs" }),
+});
+const data = await res.json();
+console.log(`${data.original_tokens} → ${data.cleaned_tokens} tokens`);
+```
+
+### Integrar num agente de IA
+
+```python
+import requests
+
 def fetch_clean(url: str) -> str:
-    """Fetch a URL and return clean text with HTML noise removed."""
-    r = requests.post("http://localhost:8080/fetch", json={"url": url})
-    return r.json()["content"]
+    """Ferramenta para agente: busca URL e retorna conteúdo limpo."""
+    resp = requests.post("http://localhost:8080/fetch", json={"url": url})
+    resp.raise_for_status()
+    return resp.json()["content"]
 ```
 
-Add `fetch_clean` to your agent's tool list. Start `python3 proxy.py` first.
+---
 
-## Features
+## Segurança e limitações
 
-**Data Proxy (Layer 2)**
-Fetches any URL, strips HTML/JSON noise, returns clean text. Caches results so repeat fetches are instant. Handles HTML, JSON, and plain text.
+- **Somente HTTPS** — requisições HTTP são rejeitadas
+- **IPs públicos apenas** — bloqueia RFC 1918, loopback, link-local, CGNAT
+- **Batch limitado a 10 URLs** por requisição
+- **Bind local por padrão** — escuta apenas em `127.0.0.1`; use `--bind 0.0.0.0` para expor na rede (com cautela)
+- Sem autenticação — não exponha publicamente sem um proxy reverso com auth
 
-**Prompt Refiner (Layer 1, opt in)**
-Strips filler words and hedging while protecting tickers, dates, money values, negations, and conversation references. You see both versions and choose.
-
-**MCP Server**
-Plug into Claude Desktop, Cursor, OpenClaw, or any MCP client. Agent discovers the tools and uses them automatically.
-
-## API Endpoints (proxy mode)
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/fetch` | POST | Fetch URL, strip noise, return clean data |
-| `/fetch/batch` | POST | Fetch multiple URLs at once |
-| `/refine` | POST | Opt in prompt refinement |
-| `/stats` | GET | Session statistics |
-
-## Run Tests
-```
-python3 test_all.py           # Layer 1 only (offline)
-python3 test_all.py --live    # Layer 1 + Layer 2 (needs internet)
-```
-
-## Roadmap
-
-- [x] Layer 1: Prompt refiner
-- [x] Layer 2: Data proxy with caching
-- [x] MCP server integration
-- [x] LangChain tool example
-- [ ] Browser fallback (Playwright) for bot blocked sites
-- [ ] Authenticated session management
-- [ ] Layer 3: Output/history compression
-- [ ] CLI tool
-- [ ] Dashboard UI
-
-## Requirements
-
-Python 3.10+. No API keys. No GPU.
+---
 
 ## License
 
