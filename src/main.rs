@@ -1,17 +1,6 @@
-mod config;
-mod data_proxy;
-mod db;
-mod error;
-mod html_cleaner;
-mod json_cleaner;
-mod mcp;
-mod optimizer;
-mod server;
-mod token;
-mod url_validator;
-
 use clap::Parser;
-use config::Config;
+use fetchless::config::Config;
+use fetchless::{db, mcp, server};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]

@@ -6,6 +6,10 @@ description = "Token-optimized web proxy — strips pages to clean text for AI a
 license = "MIT"
 repository = "https://github.com/Jbijjer/web-fetch-low-tokens"
 
+[lib]
+name = "fetchless"
+path = "src/lib.rs"
+
 [[bin]]
 name = "fetchless"
 path = "src/main.rs"
