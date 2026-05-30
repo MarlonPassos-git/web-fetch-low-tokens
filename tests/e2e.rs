@@ -546,7 +546,7 @@ async fn test_fetch_batch_real() {
     assert!(body["total_reduction_pct"].as_f64().unwrap_or(0.0) >= 0.0);
 
     for (i, r) in results.iter().enumerate() {
-        assert!(r["error"].as_str().map_or(true, |e| e.is_empty()), "result {i} has error: {}", r["error"]);
+        assert!(r["error"].as_str().is_none_or(|e| e.is_empty()), "result {i} has error: {}", r["error"]);
         assert!(!r["content"].as_str().unwrap_or("").is_empty(), "result {i} should have content");
     }
 }

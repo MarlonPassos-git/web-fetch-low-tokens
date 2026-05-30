@@ -1,0 +1,29 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/rust
+{
+	"name": "Rust",
+	"image": "mcr.microsoft.com/devcontainers/rust:2-1-trixie",
+	"features": {
+		"ghcr.io/stu-bell/devcontainer-features/claude-code:0": {}
+	},
+	"mounts": [
+		// CLAUDE.md global (somente leitura)
+		{
+			"source": "${localEnv:USERPROFILE}/.claude/CLAUDE.md",
+			"target": "/home/vscode/.claude/CLAUDE.md",
+			"type": "bind",
+			"readonly": true
+		},
+		{
+			"source": "${localEnv:USERPROFILE}/.agents/skills",
+			"target": "/home/vscode/.claude/skills",
+			"type": "bind",
+			"readonly": true
+		},
+	],
+	"containerEnv": {
+		"CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+	},
+	// Cria settings.json adaptado para Linux (sem hooks do PowerShell)
+	"postCreateCommand": "bash .devcontainer/setup.sh"
+}

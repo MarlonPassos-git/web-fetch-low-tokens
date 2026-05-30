@@ -5,7 +5,9 @@
       "Bash(rustup show:*)",
       "Bash(cmd.exe //c \"where link.exe\")",
       "Bash(cargo clean:*)",
-      "Bash(scoop install:*)"
+      "Bash(scoop install:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(cargo clippy:*)"
     ]
   }
 }
